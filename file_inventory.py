@@ -3,31 +3,34 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-def get_file_inventory(root_dir, output_csv):
-    with open(output_csv, mode='w', newline='', encoding='utf-8') as csvfile:
+
+def get_file_inventory(root_dir, output_csv_path):
+    with open(output_csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow([
-            'Full Path', 
-            'File Name', 
-            'Extension', 
-            'Size (bytes)', 
-            'Creation Time', 
+            'Full Path',
+            'File Name',
+            'Extension',
+            'Size (bytes)',
+            'Creation Time',
             'Modification Time',
             'Source'
         ])
 
         for path in Path(root_dir).rglob('*'):
             if path.is_file():
+                # Skip if any part of the path is hidden
+                if any(part.startswith('.') for part in path.relative_to(root_dir).parts):
+                    continue
+
                 stat = path.stat()
                 creation_time = datetime.fromtimestamp(stat.st_ctime).isoformat()
                 modification_time = datetime.fromtimestamp(stat.st_mtime).isoformat()
-                
-                # New: get subfolder label relative to root_dir
+
                 try:
                     relative = path.relative_to(root_dir)
                     dynamic_label = relative.parts[0] if relative.parts else ''
                 except ValueError:
-                    # fallback if relative fails (shouldn’t happen)
                     dynamic_label = ''
 
                 writer.writerow([
@@ -40,13 +43,14 @@ def get_file_inventory(root_dir, output_csv):
                     dynamic_label
                 ])
 
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
-        print("Usage: python file_inventory.py [root_folder] [output_csv]")
+        print("Usage: python file_inventory.py [root_folder] [output_csv_path]")
     else:
         root_folder = sys.argv[1]
-        output_csv = sys.argv[2]
-        get_file_inventory(root_folder, output_csv)
-        print(f"Inventory saved to {output_csv}")
+        output_csv_path = sys.argv[2]
+        get_file_inventory(root_folder, output_csv_path)
+        print(f"Inventory saved to {output_csv_path}")
 
 # python file_inventory.py "[root_dir]" "[output_csv]"
