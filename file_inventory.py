@@ -4,16 +4,19 @@ from pathlib import Path
 from datetime import datetime
 
 def get_file_inventory(root_dir, output_csv_path):
-    # Absolute path to workspace folder (used for skipping)
     workspace_dir = Path('workspace').resolve()
 
-    # Set of system folders to skip explicitly (macOS junk folders, etc.)
+    # Set of known system folder names to skip (macOS + Windows)
     ignore_folders = {
         '.fseventsd',
         '.Spotlight-V100',
         '.TemporaryItems',
         '.Trashes',
-        '.DS_Store'
+        '.DS_Store',
+        '$RECYCLE.BIN',
+        'System Volume Information',
+        'Recovery',
+        'Config.Msi'
     }
 
     with open(output_csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
@@ -30,33 +33,35 @@ def get_file_inventory(root_dir, output_csv_path):
 
         for path in Path(root_dir).rglob('*'):
             if path.is_file():
-                # ✅ Skip if inside the workspace folder
                 try:
-                    if workspace_dir in path.resolve().parents:
+                    # Resolve full path and parts
+                    resolved_path = path.resolve()
+                    relative_parts = resolved_path.relative_to(Path(root_dir).resolve()).parts
+
+                    # ✅ Skip workspace directory
+                    if workspace_dir in resolved_path.parents:
                         continue
-                except RuntimeError:
+
+                    # ✅ Skip if any folder is hidden, in ignore list, or starts with '$'
+                    if any(
+                        part.startswith('.') or
+                        part.startswith('$') or
+                        part in ignore_folders
+                        for part in relative_parts
+                    ):
+                        continue
+
+                except (ValueError, RuntimeError):
                     continue
 
-                # ✅ Get relative parts safely
-                try:
-                    relative_parts = path.resolve().relative_to(Path(root_dir).resolve()).parts
-                except ValueError:
-                    continue
-
-                # ✅ Skip if any folder in the path is hidden or matches ignored system folders
-                if any(part.startswith('.') or part in ignore_folders for part in relative_parts):
-                    continue
-
-                # File stats
                 stat = path.stat()
                 creation_time = datetime.fromtimestamp(stat.st_ctime).isoformat()
                 modification_time = datetime.fromtimestamp(stat.st_mtime).isoformat()
 
-                # Dynamic source label = top-level folder name under root_dir
                 dynamic_label = relative_parts[0] if relative_parts else ''
 
                 writer.writerow([
-                    str(path.resolve()),
+                    str(resolved_path),
                     path.name,
                     path.suffix,
                     stat.st_size,
