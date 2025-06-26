@@ -4,17 +4,19 @@ import csv
 from pathlib import Path
 from collections import defaultdict
 
-# === CONFIG ===
-SOURCE_DIR = Path("D:\\")
+# === Ask for source and extensions ===
+source_input = input("Enter full path to the source folder: ").strip('"')
+SOURCE_DIR = Path(source_input).resolve()
+
+extensions_input = input("Enter file extensions to isolate (comma-separated, no dots): ")
+extensions = [f".{ext.strip().lower()}" for ext in extensions_input.split(",")]
+
+# === Define fixed staging and logging paths ===
 EXCLUDE_DIR = SOURCE_DIR / "workspace"
 STAGING_ROOT = SOURCE_DIR / "workspace" / "staging"
 LOG_PATH = STAGING_ROOT / "copy_log.csv"
 
-# === Ask for file types ===
-extensions_input = input("Enter file extensions to isolate (comma-separated, no dots): ")
-extensions = [f".{ext.strip().lower()}" for ext in extensions_input.split(",")]
-
-# === Prep log and destination ===
+# === Prepare folders and logs ===
 STAGING_ROOT.mkdir(parents=True, exist_ok=True)
 log_entries = []
 name_counter = defaultdict(int)
@@ -40,7 +42,7 @@ def safe_filename(base_name, dest_dir):
 for root, dirs, files in os.walk(SOURCE_DIR):
     current_dir = Path(root)
 
-    # Skip workspace
+    # Skip the workspace directory itself (prevents recursive self-copying)
     if is_within_exclude(current_dir):
         continue
 
