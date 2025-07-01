@@ -36,8 +36,16 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
         undo_writer.writerow(["New Path", "Original Path"])
 
         for file in scan_dir.rglob("*"):
-            if file.is_file() and not file.suffix:
-                try:
+            try:
+                # Skip anything in excluded dirs
+                if any(part in {
+                    '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
+                    '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
+                    '__MACOSX', 'node_modules', '.cache', '.git'
+                } for part in file.parts):
+                    continue
+
+                if file.is_file() and not file.suffix:
                     file_type = magic.from_file(str(file))
                     assigned_ext = get_extension(file_type)
                     new_path = file.with_name(file.name + f".{assigned_ext}")
@@ -53,8 +61,9 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                         file.rename(new_path)
                         rename_writer.writerow([file, new_path, file_type, assigned_ext, "Renamed"])
                         undo_writer.writerow([new_path, file])
-                except Exception as e:
-                    rename_writer.writerow([file, "", "", "", f"Error: {e}"])
+
+            except Exception as e:
+                rename_writer.writerow([file, "", "", "", f"Error: {e}"])
 
     print(f"\n✅ Done. Logs saved to: {rename_log}, {undo_log}")
 
