@@ -2,18 +2,19 @@ import magic
 from pathlib import Path
 import csv
 import sys
+import argparse
 
-# Mapping from detected type keyword to extension
+# Detected types → extensions
 EXTENSION_MAP = {
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
     "Access": "mdb",
     "Outlook": "msg",
-    "Composite Document File": "xls",  # based on your testing
+    "Composite Document File": "xls",  # based on your validation
 }
 
-DEFAULT_EXT = "xls"  # fallback if unknown
+DEFAULT_EXT = "xls"  # fallback
 
 def get_extension(file_type: str) -> str:
     for keyword, ext in EXTENSION_MAP.items():
@@ -21,10 +22,18 @@ def get_extension(file_type: str) -> str:
             return ext
     return DEFAULT_EXT
 
-def rename_unix_files(scan_dir: Path, log_file: str):
-    with open(log_file, 'w', newline='', encoding='utf-8') as log:
-        writer = csv.writer(log)
-        writer.writerow(["Original Path", "New Path", "Detected Type", "Assigned Extension", "Status"])
+def fix_unix_files(scan_dir: Path, dry_run: bool):
+    rename_log = "renamed_unix_files_log.csv"
+    undo_log = "undo_log.csv"
+
+    with open(rename_log, 'w', newline='', encoding='utf-8') as rename_logfile, \
+         open(undo_log, 'w', newline='', encoding='utf-8') as undo_logfile:
+
+        rename_writer = csv.writer(rename_logfile)
+        undo_writer = csv.writer(undo_logfile)
+
+        rename_writer.writerow(["Original Path", "New Path", "Detected Type", "Assigned Extension", "Status"])
+        undo_writer.writerow(["New Path", "Original Path"])
 
         for file in scan_dir.rglob("*"):
             if file.is_file() and not file.suffix:
@@ -34,25 +43,31 @@ def rename_unix_files(scan_dir: Path, log_file: str):
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
                     if new_path.exists():
-                        writer.writerow([file, new_path, file_type, assigned_ext, "Skipped (target exists)"])
+                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Skipped (target exists)"])
                         continue
 
-                    file.rename(new_path)
-                    writer.writerow([file, new_path, file_type, assigned_ext, "Renamed"])
+                    if dry_run:
+                        print(f"[DRY RUN] Would rename: {file} → {new_path}")
+                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Dry run – not renamed"])
+                    else:
+                        file.rename(new_path)
+                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Renamed"])
+                        undo_writer.writerow([new_path, file])
                 except Exception as e:
-                    writer.writerow([file, "", "", "", f"Error: {e}"])
+                    rename_writer.writerow([file, "", "", "", f"Error: {e}"])
 
-    print(f"\n✅ Done. Log saved to: {log_file}")
+    print(f"\n✅ Done. Logs saved to: {rename_log}, {undo_log}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python fix_unix.py /path/to/scan")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Fix misclassified Unix executable files by renaming them with proper extensions.")
+    parser.add_argument("path", help="Root folder or drive to scan")
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes without renaming files")
 
-    scan_path = Path(sys.argv[1])
+    args = parser.parse_args()
+    scan_path = Path(args.path)
+
     if not scan_path.exists():
         print(f"❌ Error: {scan_path} does not exist.")
         sys.exit(1)
 
-    log_filename = "renamed_unix_files_log.csv"
-    rename_unix_files(scan_path, log_filename)
+    fix_unix_files(scan_path, dry_run=args.dry_run)
