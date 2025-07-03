@@ -1,26 +1,62 @@
 import magic
+import subprocess
 from pathlib import Path
 import csv
 import sys
 import argparse
 
-# Detected types → extensions
+# Office and document type → extensions
 EXTENSION_MAP = {
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
     "Access": "mdb",
     "Outlook": "msg",
-    "Composite Document File": "xls",  # based on your validation
+    "Composite Document File": "xls",  # might need refinement
 }
 
-DEFAULT_EXT = "xls"  # fallback
+# ffprobe video/audio format mappings
+VIDEO_EXT_MAP = {
+    'mov,mp4,m4a,3gp,3g2,mj2': 'mp4',
+    'avi': 'avi',
+    'mpeg': 'mpg',
+    'vob': 'vob',
+    'matroska,webm': 'mkv',
+    'mod': 'mod',
+    'mts,m2ts': 'mts',
+}
 
-def get_extension(file_type: str) -> str:
+DEFAULT_EXT = "xls"  # fallback for unrecognized files
+
+EXCLUDED_DIRS = {
+    '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
+    '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
+    '__MACOSX', 'node_modules', '.cache', '.git'
+}
+
+
+def get_extension_magic(file_type: str) -> str:
     for keyword, ext in EXTENSION_MAP.items():
         if keyword in file_type:
             return ext
     return DEFAULT_EXT
+
+
+def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=format_name',
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
+            capture_output=True, text=True, timeout=3
+        )
+        fmt = result.stdout.strip().lower()
+        for key, ext in VIDEO_EXT_MAP.items():
+            if fmt in key:
+                return ext, f"ffprobe: {fmt}"
+    except Exception:
+        pass
+    return None
+
 
 def fix_unix_files(scan_dir: Path, dry_run: bool):
     rename_log = "renamed_unix_files_log.csv"
@@ -32,40 +68,43 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
         rename_writer = csv.writer(rename_logfile)
         undo_writer = csv.writer(undo_logfile)
 
-        rename_writer.writerow(["Original Path", "New Path", "Detected Type", "Assigned Extension", "Status"])
+        rename_writer.writerow(["Original Path", "New Path", "Detection Method", "Assigned Extension", "Status"])
         undo_writer.writerow(["New Path", "Original Path"])
 
         for file in scan_dir.rglob("*"):
             try:
-                # Skip anything in excluded dirs
-                if any(part in {
-                    '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
-                    '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
-                    '__MACOSX', 'node_modules', '.cache', '.git'
-                } for part in file.parts):
+                if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
 
                 if file.is_file() and not file.suffix:
-                    file_type = magic.from_file(str(file))
-                    assigned_ext = get_extension(file_type)
+                    # Try ffprobe first
+                    ffprobe_result = guess_extension_ffprobe(file)
+                    if ffprobe_result:
+                        assigned_ext, detection_method = ffprobe_result
+                    else:
+                        file_type = magic.from_file(str(file))
+                        assigned_ext = get_extension_magic(file_type)
+                        detection_method = f"magic: {file_type}"
+
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
                     if new_path.exists():
-                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Skipped (target exists)"])
+                        rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Skipped (target exists)"])
                         continue
 
                     if dry_run:
-                        print(f"[DRY RUN] Would rename: {file} → {new_path}")
-                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Dry run – not renamed"])
+                        print(f"[DRY RUN] Would rename: {file} → {new_path} [{detection_method}]")
+                        rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Dry run – not renamed"])
                     else:
                         file.rename(new_path)
-                        rename_writer.writerow([file, new_path, file_type, assigned_ext, "Renamed"])
+                        rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Renamed"])
                         undo_writer.writerow([new_path, file])
 
             except Exception as e:
                 rename_writer.writerow([file, "", "", "", f"Error: {e}"])
 
     print(f"\n✅ Done. Logs saved to: {rename_log}, {undo_log}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fix misclassified Unix executable files by renaming them with proper extensions.")
