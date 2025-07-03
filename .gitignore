@@ -3,6 +3,7 @@ workspace/
 
 # files in the working code
 *.csv
+*.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
