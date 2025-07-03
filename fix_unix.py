@@ -49,10 +49,14 @@ def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
             capture_output=True, text=True, timeout=3
         )
-        fmt = result.stdout.strip().lower()
-        for key, ext in VIDEO_EXT_MAP.items():
-            if fmt in key:
-                return ext, f"ffprobe: {fmt}"
+        fmt_string = result.stdout.strip().lower()
+        formats = [f.strip() for f in fmt_string.split(',')]
+
+        for f in formats:
+            for key, ext in VIDEO_EXT_MAP.items():
+                key_formats = [k.strip() for k in key.split(',')]
+                if f in key_formats:
+                    return ext, f"ffprobe: {fmt_string}"
     except Exception:
         pass
     return None
