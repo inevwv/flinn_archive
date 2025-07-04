@@ -5,17 +5,35 @@ import csv
 import sys
 import argparse
 
-# Office and document type → extensions
+# Office/document file type keywords → extensions
 EXTENSION_MAP = {
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
     "Access": "mdb",
     "Outlook": "msg",
-    "Composite Document File": "xls",  # might need refinement
+    "Composite Document File": "xls",  # Legacy Office files
+
+    # 🖼️ Image formats
+    "TIFF image": "tif",
+    "Targa image": "tga",
+    "JPEG image": "jpg",
+    "JFIF": "jpg",
+    "PNG image": "png",
+    "GIF image": "gif",
+    "PC bitmap": "bmp",
+    "Bitmap": "bmp",
+    "Photoshop": "psd",
+    "PostScript": "eps",
+    "Camera Raw": "cr2",  # Canon RAW
+    "Canon CR3": "cr3",   # Canon newer RAW
+    "Nikon": "nef",
+    "Sony": "arw",
+    "Fujifilm": "raf",
+    "Olympus": "orf",
 }
 
-# ffprobe video/audio format mappings
+# ffprobe format → extensions
 VIDEO_EXT_MAP = {
     'mov,mp4,m4a,3gp,3g2,mj2': 'mp4',
     'avi': 'avi',
@@ -26,12 +44,21 @@ VIDEO_EXT_MAP = {
     'mts,m2ts': 'mts',
 }
 
-DEFAULT_EXT = "xls"  # fallback for unrecognized files
+DEFAULT_EXT = "xls"
 
 EXCLUDED_DIRS = {
     '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
     '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
     '__MACOSX', 'node_modules', '.cache', '.git'
+}
+
+SKIP_PATH_PARTS = {
+    'imovie projects.localized',
+    '.rcproject',
+}
+
+SKIP_FILENAMES = {
+    'thumbs.db', '.ds_store'
 }
 
 
@@ -77,11 +104,21 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
         for file in scan_dir.rglob("*"):
             try:
+                # Skip excluded directories
                 if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
 
+                # Skip by name patterns
+                if (
+                    file.name.startswith("._") or
+                    file.name.lower() in SKIP_FILENAMES or
+                    file.stat().st_size == 0 or
+                    any(skip in part.lower() for skip in SKIP_PATH_PARTS for part in file.parts)
+                ):
+                    continue
+
                 if file.is_file() and not file.suffix:
-                    # Try ffprobe first
+                    # Try ffprobe
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
                         assigned_ext, detection_method = ffprobe_result
