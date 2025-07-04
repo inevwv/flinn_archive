@@ -5,17 +5,17 @@ import csv
 import sys
 import argparse
 
-# 🔗 Office + image + Photoshop file type patterns
+# 📄 Office, image, and document formats
 EXTENSION_MAP = {
-    # Office/document types
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
     "Access": "mdb",
     "Outlook": "msg",
     "Composite Document File": "xls",
+    "PDF document": "pdf",
 
-    # Image types
+    # 🖼️ Image formats
     "TIFF image": "tif",
     "Targa image": "tga",
     "JPEG image": "jpg",
@@ -45,20 +45,17 @@ VIDEO_EXT_MAP = {
     'mts,m2ts': 'mts',
 }
 
-# Directories that should always be skipped
 EXCLUDED_DIRS = {
     '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
     '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
     '__MACOSX', 'node_modules', '.cache', '.git'
 }
 
-# Path fragments or extensions to skip
 SKIP_PATH_PARTS = {
     'imovie projects.localized',
     '.rcproject',
 }
 
-# Filenames to skip
 SKIP_FILENAMES = {
     'thumbs.db', '.ds_store', '.localized', '.ipspot_update'
 }
@@ -69,6 +66,11 @@ def get_extension_magic(file_type: str) -> str | None:
     for keyword, ext in EXTENSION_MAP.items():
         if keyword.lower() in file_type:
             return ext
+
+    # Fallback: If only says "data" or "data file", assume it's Excel
+    if file_type.strip() in {"data", "data file"}:
+        return "xls"
+
     return None
 
 
