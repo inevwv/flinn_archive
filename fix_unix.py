@@ -4,9 +4,11 @@ from pathlib import Path
 import csv
 import sys
 import argparse
+from hashlib import sha1
 
-# 📄 Office, image, and document formats
+# Mappings from magic output → extensions
 EXTENSION_MAP = {
+    # Office/doc formats
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
@@ -15,7 +17,7 @@ EXTENSION_MAP = {
     "Composite Document File": "xls",
     "PDF document": "pdf",
 
-    # 🖼️ Image formats
+    # Image formats
     "TIFF image": "tif",
     "Targa image": "tga",
     "JPEG image": "jpg",
@@ -34,7 +36,6 @@ EXTENSION_MAP = {
     "Olympus": "orf",
 }
 
-# 🎥 ffprobe-detectable formats
 VIDEO_EXT_MAP = {
     'mov,mp4,m4a,3gp,3g2,mj2': 'mp4',
     'avi': 'avi',
@@ -66,11 +67,8 @@ def get_extension_magic(file_type: str) -> str | None:
     for keyword, ext in EXTENSION_MAP.items():
         if keyword.lower() in file_type:
             return ext
-
-    # Fallback: If only says "data" or "data file", assume it's Excel
     if file_type.strip() in {"data", "data file"}:
         return "xls"
-
     return None
 
 
@@ -109,9 +107,15 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
         for file in scan_dir.rglob("*"):
             try:
+                # ⛔ Skip if in excluded system dirs
                 if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
 
+                # ⛔ Skip anything under /workspace/
+                if "workspace" in file.relative_to(scan_dir).parts:
+                    continue
+
+                # ⛔ Skip dotfiles, junk, iMovie paths, zero-byte
                 if (
                     file.name.startswith("._") or
                     file.name.startswith('.') or
@@ -121,8 +125,8 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                 ):
                     continue
 
+                # 🎯 Main logic for extensionless files
                 if file.is_file() and not file.suffix:
-                    # Try ffprobe first
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
                         assigned_ext, detection_method = ffprobe_result
@@ -131,10 +135,27 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                         assigned_ext = get_extension_magic(file_type)
                         detection_method = f"magic: {file_type}"
 
+                    # ⛔ If no known extension, quarantine it
                     if not assigned_ext:
                         rename_writer.writerow([file, "", detection_method, "", "Skipped (no known extension)"])
+
+                        if dry_run:
+                            print(f"[DRY RUN] Would quarantine: {file} → workspace/quarantine/")
+                        else:
+                            quarantine_dir = Path("workspace/quarantine")
+                            quarantine_dir.mkdir(parents=True, exist_ok=True)
+                            quarantine_copy = quarantine_dir / file.name
+                            if quarantine_copy.exists():
+                                hash_suffix = sha1(file.read_bytes()).hexdigest()[:8]
+                                quarantine_copy = quarantine_dir / f"{file.name}_{hash_suffix}"
+                            try:
+                                quarantine_copy.write_bytes(file.read_bytes())
+                                print(f"☣️ Quarantined: {file} → {quarantine_copy}")
+                            except Exception as e:
+                                print(f"⚠️ Failed to copy {file} to quarantine: {e}")
                         continue
 
+                    # ✅ Rename if valid
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
                     if new_path.exists():
@@ -156,9 +177,9 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fix misclassified Unix executable files by renaming them with proper extensions.")
+    parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
     parser.add_argument("path", help="Root folder or drive to scan")
-    parser.add_argument("--dry-run", action="store_true", help="Preview changes without renaming files")
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes without renaming or quarantining files")
 
     args = parser.parse_args()
     scan_path = Path(args.path)
