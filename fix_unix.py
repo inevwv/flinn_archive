@@ -137,10 +137,10 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
                     # ⛔ If no known extension, quarantine it
                     if not assigned_ext:
-                        rename_writer.writerow([file, "", detection_method, "", "Skipped (no known extension)"])
-
                         if dry_run:
                             print(f"[DRY RUN] Would quarantine: {file} → workspace/quarantine/")
+                            rename_writer.writerow(
+                                [file, "", detection_method, "", "Dry run – would quarantine (no known extension)"])
                         else:
                             quarantine_dir = Path("workspace/quarantine")
                             quarantine_dir.mkdir(parents=True, exist_ok=True)
@@ -151,15 +151,38 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                             try:
                                 quarantine_copy.write_bytes(file.read_bytes())
                                 print(f"☣️ Quarantined: {file} → {quarantine_copy}")
+                                rename_writer.writerow(
+                                    [file, quarantine_copy, detection_method, "", "Quarantined (no known extension)"])
                             except Exception as e:
                                 print(f"⚠️ Failed to copy {file} to quarantine: {e}")
+                                rename_writer.writerow(
+                                    [file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
                         continue
 
                     # ✅ Rename if valid
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
                     if new_path.exists():
-                        rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Skipped (target exists)"])
+                        if dry_run:
+                            print(f"[DRY RUN] Would quarantine due to name collision: {file} → workspace/quarantine/")
+                            rename_writer.writerow([file, new_path, detection_method, assigned_ext,
+                                                    "Dry run – would quarantine (target exists)"])
+                        else:
+                            quarantine_dir = Path("workspace/quarantine")
+                            quarantine_dir.mkdir(parents=True, exist_ok=True)
+                            quarantine_copy = quarantine_dir / file.name
+                            if quarantine_copy.exists():
+                                hash_suffix = sha1(file.read_bytes()).hexdigest()[:8]
+                                quarantine_copy = quarantine_dir / f"{file.name}_{hash_suffix}"
+                            try:
+                                quarantine_copy.write_bytes(file.read_bytes())
+                                print(f"☣️ Quarantined (name collision): {file} → {quarantine_copy}")
+                                rename_writer.writerow([file, quarantine_copy, detection_method, assigned_ext,
+                                                        "Quarantined (target exists)"])
+                            except Exception as e:
+                                print(f"⚠️ Failed to copy {file} to quarantine: {e}")
+                                rename_writer.writerow(
+                                    [file, "", detection_method, assigned_ext, f"Error: failed to quarantine: {e}"])
                         continue
 
                     if dry_run:
