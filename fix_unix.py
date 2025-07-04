@@ -5,17 +5,17 @@ import csv
 import sys
 import argparse
 
-# Office/document file type keywords → extensions
+# 🔗 Office + image + Photoshop file type patterns
 EXTENSION_MAP = {
-    # 🧩 Office / Document formats
+    # Office/document types
     "Excel": "xls",
     "Word": "doc",
     "PowerPoint": "ppt",
     "Access": "mdb",
     "Outlook": "msg",
-    "Composite Document File": "xls",  # Legacy Office files
+    "Composite Document File": "xls",
 
-    # 🖼️ Image formats
+    # Image types
     "TIFF image": "tif",
     "Targa image": "tga",
     "JPEG image": "jpg",
@@ -26,16 +26,15 @@ EXTENSION_MAP = {
     "Bitmap": "bmp",
     "Photoshop": "psd",
     "PostScript": "eps",
-    "Camera Raw": "cr2",  # Canon RAW
-    "Canon CR3": "cr3",   # Canon newer RAW
+    "Camera Raw": "cr2",
+    "Canon CR3": "cr3",
     "Nikon": "nef",
     "Sony": "arw",
     "Fujifilm": "raf",
     "Olympus": "orf",
 }
 
-
-# ffprobe format → extensions
+# 🎥 ffprobe-detectable formats
 VIDEO_EXT_MAP = {
     'mov,mp4,m4a,3gp,3g2,mj2': 'mp4',
     'avi': 'avi',
@@ -46,21 +45,22 @@ VIDEO_EXT_MAP = {
     'mts,m2ts': 'mts',
 }
 
-DEFAULT_EXT = "xls"
-
+# Directories that should always be skipped
 EXCLUDED_DIRS = {
     '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
     '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
     '__MACOSX', 'node_modules', '.cache', '.git'
 }
 
+# Path fragments or extensions to skip
 SKIP_PATH_PARTS = {
     'imovie projects.localized',
     '.rcproject',
 }
 
+# Filenames to skip
 SKIP_FILENAMES = {
-    'thumbs.db', '.ds_store'
+    'thumbs.db', '.ds_store', '.localized', '.ipspot_update'
 }
 
 
@@ -69,7 +69,8 @@ def get_extension_magic(file_type: str) -> str | None:
     for keyword, ext in EXTENSION_MAP.items():
         if keyword.lower() in file_type:
             return ext
-    return None  # No match found
+    return None
+
 
 def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
     try:
@@ -106,21 +107,20 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
         for file in scan_dir.rglob("*"):
             try:
-                # Skip excluded directories
                 if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
 
                 if (
-                        file.name.startswith("._") or  # AppleDouble
-                        file.name.startswith('.') or  # Hidden files like .ipspot_update or .localized
-                        file.name.lower() in SKIP_FILENAMES or
-                        file.stat().st_size == 0 or
-                        any(skip in part.lower() for skip in SKIP_PATH_PARTS for part in file.parts)
+                    file.name.startswith("._") or
+                    file.name.startswith('.') or
+                    file.name.lower() in SKIP_FILENAMES or
+                    file.stat().st_size == 0 or
+                    any(skip in part.lower() for skip in SKIP_PATH_PARTS for part in file.parts)
                 ):
                     continue
 
                 if file.is_file() and not file.suffix:
-                    # Try ffprobe
+                    # Try ffprobe first
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
                         assigned_ext, detection_method = ffprobe_result
@@ -129,9 +129,9 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                         assigned_ext = get_extension_magic(file_type)
                         detection_method = f"magic: {file_type}"
 
-                        if not assigned_ext:
-                            rename_writer.writerow([file, "", detection_method, "", "Skipped (no known extension)"])
-                            continue
+                    if not assigned_ext:
+                        rename_writer.writerow([file, "", detection_method, "", "Skipped (no known extension)"])
+                        continue
 
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
