@@ -21,12 +21,14 @@ STAGING_ROOT.mkdir(parents=True, exist_ok=True)
 log_entries = []
 name_counter = defaultdict(int)
 
+
 def is_within_exclude(path):
     try:
         path.relative_to(EXCLUDE_DIR)
         return True
     except ValueError:
         return False
+
 
 def safe_filename(base_name, dest_dir):
     if not (dest_dir / base_name).exists():
@@ -37,6 +39,7 @@ def safe_filename(base_name, dest_dir):
         candidate = f"{stem}_{name_counter[base_name]}{ext}"
         if not (dest_dir / candidate).exists():
             return candidate
+
 
 # === Walk and copy ===
 for root, dirs, files in os.walk(SOURCE_DIR):

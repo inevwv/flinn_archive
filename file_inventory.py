@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+
 def get_file_inventory(root_dir, output_csv_path):
     # Dynamically exclude the folder where the output CSV is saved
     workspace_dir = Path(output_csv_path).resolve().parent
@@ -44,10 +45,10 @@ def get_file_inventory(root_dir, output_csv_path):
 
                     # Skip hidden or known system folders
                     if any(
-                        part.startswith('.') or
-                        part.startswith('$') or
-                        part in ignore_folders
-                        for part in relative_parts
+                            part.startswith('.') or
+                            part.startswith('$') or
+                            part in ignore_folders
+                            for part in relative_parts
                     ):
                         continue
 
@@ -77,6 +78,7 @@ def get_file_inventory(root_dir, output_csv_path):
                 except (ValueError, RuntimeError):
                     continue
 
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print("Usage: python file_inventory.py [root_folder] [output_csv_path]")
@@ -86,6 +88,5 @@ if __name__ == '__main__':
         get_file_inventory(root_folder, output_csv_path)
         print("\n✅ Inventory complete!")
         print(f"📄 Output saved to: {output_csv_path}")
-
 
 # python file_inventory.py "[root_dir]" "[output_csv]"

@@ -3,6 +3,7 @@ from pathlib import Path
 import csv
 import sys
 
+
 def scan_for_excel_like_unix_files(scan_path: Path, output_file: str):
     with open(output_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -19,6 +20,7 @@ def scan_for_excel_like_unix_files(scan_path: Path, output_file: str):
 
     print(f"\n✅ Scan complete. Results saved to: {output_file}")
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python is_unix.py /path/to/scan")
@@ -31,4 +33,3 @@ if __name__ == "__main__":
 
     output_csv = "unix_files.csv"
     scan_for_excel_like_unix_files(scan_dir, output_csv)
-
