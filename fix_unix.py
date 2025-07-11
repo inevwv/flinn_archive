@@ -107,15 +107,10 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
         for file in scan_dir.rglob("*"):
             try:
-                # ⛔ Skip if in excluded system dirs
                 if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
-
-                # ⛔ Skip anything under /workspace/
                 if "workspace" in file.relative_to(scan_dir).parts:
                     continue
-
-                # ⛔ Skip dotfiles, junk, iMovie paths, zero-byte
                 if (
                     file.name.startswith("._") or
                     file.name.startswith('.') or
@@ -125,17 +120,43 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                 ):
                     continue
 
-                # 🎯 Main logic for extensionless files
                 if file.is_file() and not file.suffix:
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
                         assigned_ext, detection_method = ffprobe_result
                     else:
                         file_type = magic.from_file(str(file))
-                        assigned_ext = get_extension_magic(file_type)
                         detection_method = f"magic: {file_type}"
 
-                    # ⛔ If no known extension, quarantine it
+                        # 🔍 Special case: Apple HFS+ resource fork
+                        if "Apple HFS/HFS+ resource fork" in file_type:
+                            new_path = file.with_name(file.name + "..TODELETE")
+
+                            if dry_run:
+                                print(f"[DRY RUN] Would rename resource fork: {file} → {new_path}")
+                                rename_writer.writerow([
+                                    file, new_path, detection_method, ".TODELETE",
+                                    "Dry run – would rename (resource fork)"
+                                ])
+                            else:
+                                try:
+                                    file.rename(new_path)
+                                    print(f"🗑️ Marked for deletion: {file} → {new_path}")
+                                    rename_writer.writerow([
+                                        file, new_path, detection_method, ".TODELETE",
+                                        "Marked for Deletion (Resource Fork)"
+                                    ])
+                                    undo_writer.writerow([new_path, file])
+                                except Exception as e:
+                                    print(f"⚠️ Failed to rename resource fork: {file} → {new_path}: {e}")
+                                    rename_writer.writerow([
+                                        file, "", detection_method, ".TODELETE",
+                                        f"Error: failed to rename: {e}"
+                                    ])
+                            continue  # Skip further logic
+
+                        assigned_ext = get_extension_magic(file_type)
+
                     if not assigned_ext:
                         if dry_run:
                             print(f"[DRY RUN] Would quarantine: {file} → workspace/quarantine/")
@@ -159,7 +180,6 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                                     [file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
                         continue
 
-                    # ✅ Rename if valid
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
                     if new_path.exists():
