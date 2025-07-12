@@ -4,9 +4,8 @@ from pathlib import Path
 import csv
 import sys
 import argparse
-from hashlib import sha1
 
-# Mappings from magic output → extensions
+# --- Extension mapping based on libmagic keywords ---
 EXTENSION_MAP = {
     # Office/doc formats
     "Excel": "xls",
@@ -36,6 +35,7 @@ EXTENSION_MAP = {
     "Olympus": "orf",
 }
 
+# --- Video format mapping based on ffprobe results ---
 VIDEO_EXT_MAP = {
     'mov,mp4,m4a,3gp,3g2,mj2': 'mp4',
     'avi': 'avi',
@@ -46,6 +46,7 @@ VIDEO_EXT_MAP = {
     'mts,m2ts': 'mts',
 }
 
+# --- Directory and file filters to skip known junk or system folders ---
 EXCLUDED_DIRS = {
     '.fseventsd', '.Spotlight-V100', '.TemporaryItems', '.Trashes', '.DS_Store',
     '$RECYCLE.BIN', 'System Volume Information', 'Recovery', 'Config.Msi',
@@ -61,7 +62,20 @@ SKIP_FILENAMES = {
     'thumbs.db', '.ds_store', '.localized', '.ipspot_update'
 }
 
+# --- Append a flag to the name and resolve conflicts by adding counters if needed ---
+def resolve_conflict_with_flag(target_path: Path, flag: str = "__DUPLICATE") -> Path:
+    stem = target_path.stem
+    suffix = target_path.suffix
+    parent = target_path.parent
+    new_stem = f"{stem}{flag}"
+    new_path = parent / f"{new_stem}{suffix}"
+    counter = 1
+    while new_path.exists():
+        new_path = parent / f"{new_stem}_{counter}{suffix}"
+        counter += 1
+    return new_path
 
+# --- Try to assign an extension using magic's output string ---
 def get_extension_magic(file_type: str) -> str | None:
     file_type = file_type.lower()
     for keyword, ext in EXTENSION_MAP.items():
@@ -71,7 +85,7 @@ def get_extension_magic(file_type: str) -> str | None:
         return "xls"
     return None
 
-
+# --- Try to assign a video extension using ffprobe ---
 def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
     try:
         result = subprocess.run(
@@ -81,21 +95,21 @@ def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
         )
         fmt_string = result.stdout.strip().lower()
         formats = [f.strip() for f in fmt_string.split(',')]
-
         for f in formats:
             for key, ext in VIDEO_EXT_MAP.items():
                 key_formats = [k.strip() for k in key.split(',')]
                 if f in key_formats:
                     return ext, f"ffprobe: {fmt_string}"
-    except Exception:
+    except subprocess.SubprocessError:
         pass
     return None
 
-
+# --- Main file fixing function ---
 def fix_unix_files(scan_dir: Path, dry_run: bool):
     rename_log = "renamed_unix_files_log.csv"
     undo_log = "undo_log.csv"
 
+    # --- Open logs for writing ---
     with open(rename_log, 'w', newline='', encoding='utf-8') as rename_logfile, \
          open(undo_log, 'w', newline='', encoding='utf-8') as undo_logfile:
 
@@ -105,8 +119,10 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
         rename_writer.writerow(["Original Path", "New Path", "Detection Method", "Assigned Extension", "Status"])
         undo_writer.writerow(["New Path", "Original Path"])
 
+        # --- Scan files recursively ---
         for file in scan_dir.rglob("*"):
             try:
+                # Skip excluded directories, system files, or zero-byte files
                 if any(part in EXCLUDED_DIRS for part in file.parts):
                     continue
                 if "workspace" in file.relative_to(scan_dir).parts:
@@ -120,91 +136,72 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                 ):
                     continue
 
+                # --- Process extensionless files only ---
                 if file.is_file() and not file.suffix:
+                    # Try detecting video format using ffprobe first
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
                         assigned_ext, detection_method = ffprobe_result
                     else:
+                        # Fallback to libmagic detection
                         file_type = magic.from_file(str(file))
                         detection_method = f"magic: {file_type}"
 
-                        # 🔍 Special case: Apple HFS+ resource fork
+                        # Special case for HFS resource fork
                         if "Apple HFS/HFS+ resource fork" in file_type:
-                            new_path = file.with_name(file.name + "..TODELETE")
-
+                            new_path = file.with_name(file.name + ".TODELETE")
                             if dry_run:
                                 print(f"[DRY RUN] Would rename resource fork: {file} → {new_path}")
-                                rename_writer.writerow([
-                                    file, new_path, detection_method, ".TODELETE",
-                                    "Dry run – would rename (resource fork)"
-                                ])
+                                rename_writer.writerow([file, new_path, detection_method, ".TODELETE", "Dry run – would rename (resource fork)"])
                             else:
                                 try:
                                     file.rename(new_path)
                                     print(f"🗑️ Marked for deletion: {file} → {new_path}")
-                                    rename_writer.writerow([
-                                        file, new_path, detection_method, ".TODELETE",
-                                        "Marked for Deletion (Resource Fork)"
-                                    ])
+                                    rename_writer.writerow([file, new_path, detection_method, ".TODELETE", "Marked for Deletion (Resource Fork)"])
                                     undo_writer.writerow([new_path, file])
-                                except Exception as e:
+                                except (OSError, IOError, PermissionError) as e:
                                     print(f"⚠️ Failed to rename resource fork: {file} → {new_path}: {e}")
-                                    rename_writer.writerow([
-                                        file, "", detection_method, ".TODELETE",
-                                        f"Error: failed to rename: {e}"
-                                    ])
-                            continue  # Skip further logic
+                                    rename_writer.writerow([file, "", detection_method, ".TODELETE", f"Error: failed to rename: {e}"])
+                            continue
 
                         assigned_ext = get_extension_magic(file_type)
 
+                    # --- Quarantine unknown types ---
                     if not assigned_ext:
                         if dry_run:
                             print(f"[DRY RUN] Would quarantine: {file} → workspace/quarantine/")
-                            rename_writer.writerow(
-                                [file, "", detection_method, "", "Dry run – would quarantine (no known extension)"])
+                            rename_writer.writerow([file, "", detection_method, "", "Dry run – would quarantine (no known extension)"])
                         else:
                             quarantine_dir = Path("workspace/quarantine")
                             quarantine_dir.mkdir(parents=True, exist_ok=True)
                             quarantine_copy = quarantine_dir / file.name
                             if quarantine_copy.exists():
-                                hash_suffix = sha1(file.read_bytes()).hexdigest()[:8]
-                                quarantine_copy = quarantine_dir / f"{file.name}_{hash_suffix}"
+                                quarantine_copy = resolve_conflict_with_flag(quarantine_copy)
                             try:
                                 quarantine_copy.write_bytes(file.read_bytes())
                                 print(f"☣️ Quarantined: {file} → {quarantine_copy}")
-                                rename_writer.writerow(
-                                    [file, quarantine_copy, detection_method, "", "Quarantined (no known extension)"])
+                                rename_writer.writerow([file, quarantine_copy, detection_method, "", "Quarantined (no known extension)"])
                             except Exception as e:
                                 print(f"⚠️ Failed to copy {file} to quarantine: {e}")
-                                rename_writer.writerow(
-                                    [file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
+                                rename_writer.writerow([file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
                         continue
 
+                    # --- Assign new filename with extension ---
                     new_path = file.with_name(file.name + f".{assigned_ext}")
 
+                    # Handle conflict by adding duplicate marker
                     if new_path.exists():
+                        resolved_path = resolve_conflict_with_flag(new_path)
                         if dry_run:
-                            print(f"[DRY RUN] Would quarantine due to name collision: {file} → workspace/quarantine/")
-                            rename_writer.writerow([file, new_path, detection_method, assigned_ext,
-                                                    "Dry run – would quarantine (target exists)"])
+                            print(f"[DRY RUN] Would rename (conflict flagged): {file} → {resolved_path} [{detection_method}]")
+                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext, "Dry run – flagged potential duplicate"])
                         else:
-                            quarantine_dir = Path("workspace/quarantine")
-                            quarantine_dir.mkdir(parents=True, exist_ok=True)
-                            quarantine_copy = quarantine_dir / file.name
-                            if quarantine_copy.exists():
-                                hash_suffix = sha1(file.read_bytes()).hexdigest()[:8]
-                                quarantine_copy = quarantine_dir / f"{file.name}_{hash_suffix}"
-                            try:
-                                quarantine_copy.write_bytes(file.read_bytes())
-                                print(f"☣️ Quarantined (name collision): {file} → {quarantine_copy}")
-                                rename_writer.writerow([file, quarantine_copy, detection_method, assigned_ext,
-                                                        "Quarantined (target exists)"])
-                            except Exception as e:
-                                print(f"⚠️ Failed to copy {file} to quarantine: {e}")
-                                rename_writer.writerow(
-                                    [file, "", detection_method, assigned_ext, f"Error: failed to quarantine: {e}"])
+                            file.rename(resolved_path)
+                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext, "Renamed (flagged potential duplicate)"])
+                            undo_writer.writerow([resolved_path, file])
                         continue
 
+                    # --- Standard renaming ---
                     if dry_run:
                         print(f"[DRY RUN] Would rename: {file} → {new_path} [{detection_method}]")
                         rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Dry run – not renamed"])
@@ -218,7 +215,7 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
     print(f"\n✅ Done. Logs saved to: {rename_log}, {undo_log}")
 
-
+# --- CLI Entry Point ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
     parser.add_argument("path", help="Root folder or drive to scan")
