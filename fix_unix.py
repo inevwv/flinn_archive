@@ -4,6 +4,7 @@ from pathlib import Path
 import csv
 import sys
 import argparse
+import os
 
 # --- Extension mapping based on libmagic keywords ---
 EXTENSION_MAP = {
@@ -62,6 +63,7 @@ SKIP_FILENAMES = {
     'thumbs.db', '.ds_store', '.localized', '.ipspot_update'
 }
 
+
 # --- Append a flag to the name and resolve conflicts by adding counters if needed ---
 def resolve_conflict_with_flag(target_path: Path, flag: str = "__DUPLICATE") -> Path:
     stem = target_path.stem
@@ -75,6 +77,7 @@ def resolve_conflict_with_flag(target_path: Path, flag: str = "__DUPLICATE") -> 
         counter += 1
     return new_path
 
+
 # --- Try to assign an extension using magic's output string ---
 def get_extension_magic(file_type: str) -> str | None:
     file_type = file_type.lower()
@@ -84,6 +87,7 @@ def get_extension_magic(file_type: str) -> str | None:
     if file_type.strip() in {"data", "data file"}:
         return "xls"
     return None
+
 
 # --- Try to assign a video extension using ffprobe ---
 def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
@@ -104,6 +108,7 @@ def guess_extension_ffprobe(file_path: Path) -> tuple[str, str] | None:
         pass
     return None
 
+
 # --- Main file fixing function ---
 def fix_unix_files(scan_dir: Path, dry_run: bool):
     rename_log = "renamed_unix_files_log.csv"
@@ -111,7 +116,7 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
     # --- Open logs for writing ---
     with open(rename_log, 'w', newline='', encoding='utf-8') as rename_logfile, \
-         open(undo_log, 'w', newline='', encoding='utf-8') as undo_logfile:
+            open(undo_log, 'w', newline='', encoding='utf-8') as undo_logfile:
 
         rename_writer = csv.writer(rename_logfile)
         undo_writer = csv.writer(undo_logfile)
@@ -128,16 +133,22 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                 if "workspace" in file.relative_to(scan_dir).parts:
                     continue
                 if (
-                    file.name.startswith("._") or
-                    file.name.startswith('.') or
-                    file.name.lower() in SKIP_FILENAMES or
-                    file.stat().st_size == 0 or
-                    any(skip in part.lower() for skip in SKIP_PATH_PARTS for part in file.parts)
+                        file.name.startswith("._") or
+                        file.name.startswith('.') or
+                        file.name.lower() in SKIP_FILENAMES or
+                        file.stat().st_size == 0 or
+                        any(skip in part.lower() for skip in SKIP_PATH_PARTS for part in file.parts)
                 ):
                     continue
 
                 # --- Process extensionless files only ---
                 if file.is_file() and not file.suffix:
+                    # Skip files without write permission
+                    if not os.access(file, os.W_OK):
+                        print(f"⚠️ Skipped (no write permission): {file}")
+                        rename_writer.writerow([file, "", "", "", "Skipped – no write permission"])
+                    continue
+
                     # Try detecting video format using ffprobe first
                     ffprobe_result = guess_extension_ffprobe(file)
                     if ffprobe_result:
@@ -152,16 +163,21 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                             new_path = file.with_name(file.name + ".TODELETE")
                             if dry_run:
                                 print(f"[DRY RUN] Would rename resource fork: {file} → {new_path}")
-                                rename_writer.writerow([file, new_path, detection_method, ".TODELETE", "Dry run – would rename (resource fork)"])
+                                rename_writer.writerow([file, new_path, detection_method, ".TODELETE",
+                                                        "Dry run – would rename (resource fork)"])
                             else:
                                 try:
                                     file.rename(new_path)
                                     print(f"🗑️ Marked for deletion: {file} → {new_path}")
-                                    rename_writer.writerow([file, new_path, detection_method, ".TODELETE", "Marked for Deletion (Resource Fork)"])
+                                    rename_writer.writerow([file, new_path, detection_method, ".TODELETE",
+                                                            "Marked for Deletion (Resource Fork)", "No"])
+
                                     undo_writer.writerow([new_path, file])
                                 except (OSError, IOError, PermissionError) as e:
                                     print(f"⚠️ Failed to rename resource fork: {file} → {new_path}: {e}")
-                                    rename_writer.writerow([file, "", detection_method, ".TODELETE", f"Error: failed to rename: {e}"])
+                                    rename_writer.writerow(
+                                        [file, "", detection_method, ".TODELETE", f"Error: failed to rename: {e}",
+                                         "No"])
                             continue
 
                         assigned_ext = get_extension_magic(file_type)
@@ -170,7 +186,8 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                     if not assigned_ext:
                         if dry_run:
                             print(f"[DRY RUN] Would quarantine: {file} → workspace/quarantine/")
-                            rename_writer.writerow([file, "", detection_method, "", "Dry run – would quarantine (no known extension)"])
+                            rename_writer.writerow(
+                                [file, "", detection_method, "", "Dry run – would quarantine (no known extension)"])
                         else:
                             quarantine_dir = Path("workspace/quarantine")
                             quarantine_dir.mkdir(parents=True, exist_ok=True)
@@ -180,10 +197,12 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                             try:
                                 quarantine_copy.write_bytes(file.read_bytes())
                                 print(f"☣️ Quarantined: {file} → {quarantine_copy}")
-                                rename_writer.writerow([file, quarantine_copy, detection_method, "", "Quarantined (no known extension)"])
+                                rename_writer.writerow(
+                                    [file, quarantine_copy, detection_method, "", "Quarantined (no known extension)"])
                             except Exception as e:
                                 print(f"⚠️ Failed to copy {file} to quarantine: {e}")
-                                rename_writer.writerow([file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
+                                rename_writer.writerow(
+                                    [file, "", detection_method, "", f"Error: failed to quarantine: {e}"])
                         continue
 
                     # --- Assign new filename with extension ---
@@ -193,18 +212,22 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                     if new_path.exists():
                         resolved_path = resolve_conflict_with_flag(new_path)
                         if dry_run:
-                            print(f"[DRY RUN] Would rename (conflict flagged): {file} → {resolved_path} [{detection_method}]")
-                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext, "Dry run – flagged potential duplicate"])
+                            print(
+                                f"[DRY RUN] Would rename (conflict flagged): {file} → {resolved_path} [{detection_method}]")
+                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext,
+                                                    "Dry run – flagged potential duplicate"])
                         else:
                             file.rename(resolved_path)
-                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext, "Renamed (flagged potential duplicate)"])
+                            rename_writer.writerow([file, resolved_path, detection_method, assigned_ext,
+                                                    "Renamed (flagged potential duplicate)"])
                             undo_writer.writerow([resolved_path, file])
                         continue
 
                     # --- Standard renaming ---
                     if dry_run:
                         print(f"[DRY RUN] Would rename: {file} → {new_path} [{detection_method}]")
-                        rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Dry run – not renamed"])
+                        rename_writer.writerow(
+                            [file, new_path, detection_method, assigned_ext, "Dry run – not renamed"])
                     else:
                         file.rename(new_path)
                         rename_writer.writerow([file, new_path, detection_method, assigned_ext, "Renamed"])
@@ -213,11 +236,37 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
             except Exception as e:
                 rename_writer.writerow([file, "", "", "", f"Error: {e}"])
 
-    print(f"\n✅ Done. Logs saved to: {rename_log}, {undo_log}")
+    print(f"
+    ✅ Done.Logs
+    saved
+    to: {rename_log}, {undo_log}
+    ")
 
-# --- CLI Entry Point ---
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
+    # --- Summary stats ---
+    total = renamed = quarantined = skipped = 0
+    with open(rename_log, newline='', encoding='utf-8') as f:
+        next(f)  # skip header
+    for row in csv.reader(f):
+        total += 1
+    match row[4].lower():
+    case
+    s
+    if "rename" in s:
+        renamed += 1
+    case
+    s
+    if "quarantine" in s:
+        quarantined += 1
+    case
+    s
+    if "skip" in s:
+        skipped += 1
+
+    print(f"📊 Summary: Total processed: {total} | Renamed: {renamed} | Quarantined: {quarantined} | Skipped: {skipped}")
+
+    # --- CLI Entry Point ---
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
     parser.add_argument("path", help="Root folder or drive to scan")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without renaming or quarantining files")
 
@@ -226,6 +275,6 @@ if __name__ == "__main__":
 
     if not scan_path.exists():
         print(f"❌ Error: {scan_path} does not exist.")
-        sys.exit(1)
+    sys.exit(1)
 
     fix_unix_files(scan_path, dry_run=args.dry_run)
