@@ -147,7 +147,7 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
                     if not os.access(file, os.W_OK):
                         print(f"⚠️ Skipped (no write permission): {file}")
                         rename_writer.writerow([file, "", "", "", "Skipped – no write permission"])
-                    continue
+                        continue
 
                     # Try detecting video format using ffprobe first
                     ffprobe_result = guess_extension_ffprobe(file)
@@ -236,37 +236,29 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
             except Exception as e:
                 rename_writer.writerow([file, "", "", "", f"Error: {e}"])
 
-    print(f"
-    ✅ Done.Logs
-    saved
-    to: {rename_log}, {undo_log}
-    ")
+    print(f"✅ Done.Logs saved to: {rename_log}, {undo_log}")
 
     # --- Summary stats ---
     total = renamed = quarantined = skipped = 0
     with open(rename_log, newline='', encoding='utf-8') as f:
         next(f)  # skip header
-    for row in csv.reader(f):
-        total += 1
-    match row[4].lower():
-    case
-    s
-    if "rename" in s:
-        renamed += 1
-    case
-    s
-    if "quarantine" in s:
-        quarantined += 1
-    case
-    s
-    if "skip" in s:
-        skipped += 1
+        for row in csv.reader(f):
+            total += 1
+            match row[4].lower():
+                case s if "rename" in s:
+                    renamed += 1
+                case s if "quarantine" in s:
+                    quarantined += 1
+                case s if "skip" in s:
+                    skipped += 1
 
     print(f"📊 Summary: Total processed: {total} | Renamed: {renamed} | Quarantined: {quarantined} | Skipped: {skipped}")
 
     # --- CLI Entry Point ---
-    if __name__ == "__main__":
-        parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fix Unix-like extensionless files with proper extensions.")
     parser.add_argument("path", help="Root folder or drive to scan")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without renaming or quarantining files")
 
@@ -275,6 +267,6 @@ def fix_unix_files(scan_dir: Path, dry_run: bool):
 
     if not scan_path.exists():
         print(f"❌ Error: {scan_path} does not exist.")
-    sys.exit(1)
+        sys.exit(1)
 
     fix_unix_files(scan_path, dry_run=args.dry_run)
