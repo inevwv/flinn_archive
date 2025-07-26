@@ -24,12 +24,13 @@ def get_file_inventory(root_dir, output_csv_path):
     with open(output_csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow([
-            'Full Path',
-            'File Name',
+            'Full_Path',
+            'File_Name',
             'Extension',
-            'Size (bytes)',
-            'Creation Time',
-            'Modification Time',
+            'Has_Multiple_Dots',
+            'Size_(bytes)',
+            'Creation_Time',
+            'Modification_Time',
             'Source'
         ])
 
