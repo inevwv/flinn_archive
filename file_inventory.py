@@ -46,10 +46,10 @@ def get_file_inventory(root_dir, output_csv_path):
 
                     # Skip hidden or known system folders
                     if any(
-                            part.startswith('.') or
-                            part.startswith('$') or
-                            part in ignore_folders
-                            for part in relative_parts
+                        part.startswith('.') or
+                        part.startswith('$') or
+                        part in ignore_folders
+                        for part in relative_parts
                     ):
                         continue
 
@@ -66,10 +66,15 @@ def get_file_inventory(root_dir, output_csv_path):
 
                     dynamic_label = relative_parts[0] if relative_parts else ''
 
+                    # Check if the file name has multiple dots
+                    dot_count = path.name.count('.')
+                    has_multiple_dots = 'Yes' if dot_count >= 2 else 'No'
+
                     writer.writerow([
                         str(resolved_path),
                         path.name,
                         path.suffix,
+                        has_multiple_dots,
                         size,
                         creation_time,
                         modification_time,
