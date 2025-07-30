@@ -6,7 +6,10 @@ import sys
 def load_excel(path):
     """Load an Excel file and fill NaNs for cleaner comparisons."""
     try:
-        return pd.read_excel(path).fillna("")
+        if path.endswith(".xls"):
+            return pd.read_excel(path, engine="xlrd").fillna("")
+        else:
+            return pd.read_excel(path).fillna("")
     except Exception as e:
         print(f"❌ Failed to read '{path}': {e}")
         sys.exit(1)
