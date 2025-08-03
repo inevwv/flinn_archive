@@ -41,4 +41,4 @@ foreach ($xlsPath in $paths) {
 $excel.Quit()
 [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
 
-Write-Host "`n🎯 Conversion complete."
+Write-Host "`n🎯 Conversion complete (existing .xlsx files replaced)."
