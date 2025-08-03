@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # === CONFIGURATION ===
 INPUT_PATH = "D:/workspace/xls_to_convert.csv"  # CSV with one column of full file paths
-OUTPUT_PATH = Path.cwd() / "batch_compare" / "comparison_groups.xlsx"
+OUTPUT_PATH = Path(__file__).resolve().parent.parent / "batch_compare" / "comparison_groups.xlsx"
 OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # === LOAD PATHS ===
