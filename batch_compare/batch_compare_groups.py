@@ -1,5 +1,6 @@
 import pandas as pd
 import itertools
+import traceback
 from pathlib import Path
 from compare_spreadsheets import load_excel, exact_comparison, sorted_comparison, similarity_score
 
@@ -17,6 +18,7 @@ for group_id, group_df in df.groupby("Group_ID"):
 
     # Compare all pairs in the group
     for file1, file2 in itertools.combinations(file_paths, 2):
+        print(f"➡️ Comparing: {file1} vs {file2}")
         try:
             df1 = load_excel(file1)
             df2 = load_excel(file2)
@@ -30,9 +32,10 @@ for group_id, group_df in df.groupby("Group_ID"):
                 result = f"Fuzzy match: {score:.2f}%"
 
         except Exception as e:
+            print(f"❌ {e}")
+            print(traceback.format_exc())
             result = f"Error: {e}"
 
-        print(f"📝 {file1} ↔ {file2}: {result}")
         results.append({
             "Group_ID": group_id,
             "File_1": file1,
