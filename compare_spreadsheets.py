@@ -11,8 +11,7 @@ def load_excel(path):
         else:
             return pd.read_excel(path).fillna("")
     except Exception as e:
-        print(f"❌ Failed to read '{path}': {e}")
-        sys.exit(1)
+        raise RuntimeError(f"Failed to read '{path}': {e}")
 
 def exact_comparison(df1, df2):
     return df1.equals(df2)
