@@ -24,17 +24,19 @@ foreach ($xlsPath in $paths) {
     $file = Get-Item $xlsPath
     $xlsxPath = "$($file.DirectoryName)\$($file.BaseName).xlsx"
 
-    if (-not (Test-Path $xlsxPath)) {
-        try {
-            $wb = $excel.Workbooks.Open($xlsPath, 0, $true)
-            $wb.SaveAs($xlsxPath, 51)  # 51 = .xlsx format
-            $wb.Close($false)
-            Write-Output "✅ Converted: $xlsPath → $xlsxPath"
-        } catch {
-            Write-Warning "❌ Failed: $xlsPath - $_"
+    try {
+        # Delete any existing .xlsx version to avoid duplication/clutter
+        if (Test-Path $xlsxPath) {
+            Remove-Item $xlsxPath -Force
+            Write-Output "♻️ Deleted existing: $xlsxPath"
         }
-    } else {
-        Write-Output "🟡 Skipped (already exists): $xlsxPath"
+
+        $wb = $excel.Workbooks.Open($xlsPath, 0, $true)
+        $wb.SaveAs($xlsxPath, 51)  # 51 = .xlsx format
+        $wb.Close($false)
+        Write-Output "✅ Replaced: $xlsPath → $xlsxPath"
+    } catch {
+        Write-Warning "❌ Failed: $xlsPath - $_"
     }
 }
 
