@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SOURCE="$HOME/Library/Mobile Documents/com~apple~CloudDocs/"
-DEST="/Volumes/MyBackupDisk/iCloudBackup/"
+DEST="/Volumes/CrucialX9"
 
 # # Rename anth* folders to "Anthropology"
 # find "$SOURCE" -type d -iname 'anth*' | while read -r dir; do
