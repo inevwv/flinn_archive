@@ -38,7 +38,11 @@
 # ==============================================================================
 
 SOURCE="$HOME/Library/Mobile Documents/com~apple~CloudDocs/"
-DEST="/Volumes/CrucialX9"
+
+BASE_VOLUME="/Volumes/CrucialX9"
+DEST="$BASE_VOLUME/iCloud"
+# Create destination folder if it doesn't exist
+mkdir -p "$DEST"
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Default to dry run unless overridden
