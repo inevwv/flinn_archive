@@ -109,37 +109,40 @@ fi
 # -----------------------------------------
 # Run rsync with all exclusions
 # -----------------------------------------
-sudo caffeinate -i rsync $FLAGS \
-  --exclude='~$*' \
-  --exclude='.DS_Store' \
-  --exclude='._*' \
-  --exclude='.Trash*' \
-  --exclude='.TemporaryItems' \
-  --exclude='.Spotlight-V100' \
-  --exclude='*.icloud' \
-  --exclude='*.iCloud*' \
-  --exclude='*/Icon?' \
-  --exclude='*/.DocumentRevisions-V100' \
-  --exclude='*/.fseventsd' \
-  --exclude='*/.Sync*' \
-  --exclude='*/.com.apple.timemachine.supported' \
-  --exclude='*/com~apple~CloudDocs/.Trash' \
-  --exclude='*/com~apple~CloudDocs/.Trash-*' \
-  --exclude='*/Desktop/Waco/*' \
-  --exclude='*/bmw i8/*' \
-  --exclude='*/Spiff photos/*' \
-  --exclude='*/House/*' \
-  --exclude='*/portland/*' \
-  --exclude='*/John slides/*' \
-  --exclude='*/Desktop/Mark/Personal/*' \
-  --exclude='*/Desktop/Mark/VB House/*' \
-  --exclude='*/Desktop/Mark/Waco/*' \
-  --exclude='*Tenure*' \
-  --exclude='*Vitae*' \
-  --exclude='*Payroll*' \
-  --exclude='*LoR*' \
-  "$SOURCE" "$DEST" \
-  --log-file="$LOGFILE"
+{
+  echo "=== rsync started at $(date) ==="
+  sudo caffeinate -i rsync $FLAGS \
+    --exclude='~$*' \
+    --exclude='.DS_Store' \
+    --exclude='._*' \
+    --exclude='.Trash*' \
+    --exclude='.TemporaryItems' \
+    --exclude='.Spotlight-V100' \
+    --exclude='*.icloud' \
+    --exclude='*.iCloud*' \
+    --exclude='*/Icon?' \
+    --exclude='*/.DocumentRevisions-V100' \
+    --exclude='*/.fseventsd' \
+    --exclude='*/.Sync*' \
+    --exclude='*/.com.apple.timemachine.supported' \
+    --exclude='*/com~apple~CloudDocs/.Trash' \
+    --exclude='*/com~apple~CloudDocs/.Trash-*' \
+    --exclude='*/Desktop/Waco/*' \
+    --exclude='*/bmw i8/*' \
+    --exclude='*/Spiff photos/*' \
+    --exclude='*/House/*' \
+    --exclude='*/portland/*' \
+    --exclude='*/John slides/*' \
+    --exclude='*/Desktop/Mark/Personal/*' \
+    --exclude='*/Desktop/Mark/VB House/*' \
+    --exclude='*/Desktop/Mark/Waco/*' \
+    --exclude='*Tenure*' \
+    --exclude='*Vitae*' \
+    --exclude='*Payroll*' \
+    --exclude='*LoR*' \
+    "$SOURCE" "$DEST"
+  echo "=== rsync finished at $(date) ==="
+} &> "$LOGFILE"
 
 # -----------------------------------------
 # Wrap-up
