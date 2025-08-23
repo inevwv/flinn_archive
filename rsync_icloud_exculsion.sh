@@ -6,58 +6,63 @@
 
 SOURCE="$HOME/Library/Mobile Documents/com~apple~CloudDocs/"
 DEST="/Volumes/CrucialX9"
-
-# If the script is run with --help or with no arguments, show a help message
-if [[ "$1" == "--help" || -z "$1" ]]; then
-  echo ""
-  echo "📦  iCloud Drive Backup Script (rsync_icloud_exclusion.sh)"
-  echo "----------------------------------------------------------"
-  echo "Usage:"
-  echo "  ./rsync_icloud_exclusion.sh           # Run with built-in DRYRUN toggle"
-  echo ""
-  echo "What it does:"
-  echo "  ✅ Backs up your iCloud Drive to an external volume using rsync"
-  echo "  🚫 Skips junk files, system folders, and private or redundant items"
-  echo ""
-  echo "rsync flags used:"
-  echo "  -a   Archive mode (preserves permissions, symlinks, timestamps)"
-  echo "  -v   Verbose output (shows all files being considered)"
-  echo "  -h   Human-readable sizes"
-  echo "  -n   DRY RUN mode (simulate only, no copying)"
-  echo "  --progress  Show progress bar during copying"
-  echo "  --stats     Show summary at the end"
-  echo ""
-  echo "🧪 DRYRUN is controlled from inside the script:"
-  echo "     DRYRUN=true   ← simulate"
-  echo "     DRYRUN=false  ← real copy (with confirmation)"
-  echo ""
-  echo "🚨 Real runs will prompt you before doing anything."
-  echo "📝 Log file is saved to: ~/icloud_rsync.log"
-  echo ""
-  echo "🔧 Tip: If you see a permission error, run:"
-  echo "     chmod +x ./rsync_icloud_exclusion.sh"
-  exit 0
-fi
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # -----------------------------------------
-# DRY RUN TOGGLE
-# Set to true to simulate the sync without copying
+# Default to dry run unless overridden
 # -----------------------------------------
-DRYRUN=false  # ← change this to true for testing
+DRYRUN=true
 
-# Set rsync flags based on dry run
+case "$1" in
+  --real-run)
+    DRYRUN=false
+    ;;
+  --help|-h)
+    echo ""
+    echo "📦  iCloud Drive Backup Script"
+    echo "-------------------------------"
+    echo "Usage:"
+    echo "  ./rsync_icloud_exclusion.sh             # Dry run (default)"
+    echo "  ./rsync_icloud_exclusion.sh --real-run  # Perform live backup (with confirmation)"
+    echo "  ./rsync_icloud_exclusion.sh --help      # Show this help message"
+    echo ""
+    echo "Log file will be saved to: ~/icloud_rsync_<timestamp>.log"
+    echo ""
+    exit 0
+    ;;
+  "" )
+    # No argument = dry run (default)
+    ;;
+  *)
+    echo "❌ Unknown option: $1"
+    echo "Run with --help to see usage."
+    exit 1
+    ;;
+esac
+
+# -----------------------------------------
+# Configure run mode
+# -----------------------------------------
+
 if [ "$DRYRUN" = true ]; then
   FLAGS="-avhn"
-  echo "🧪 DRY RUN: No files will be copied to $DEST"
+  LOGFILE=~/icloud_rsync_dryrun_$TIMESTAMP.log
+  echo "🧪 DRY RUN: No files will be copied."
 else
   FLAGS="-avh"
+  LOGFILE=~/icloud_rsync_$TIMESTAMP.log
   echo "🚨 LIVE RUN: Files WILL BE COPIED to $DEST"
-  
-  # 🔒 Confirmation prompt
-  echo "⚠️  You are about to run a LIVE BACKUP to: $DEST"
-  read -p "Do you want to continue? (y/N): " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo "❌ Backup cancelled by user."
+
+  # Check that destination is mounted
+  if [ ! -d "$DEST" ]; then
+    echo "❌ Destination drive not found at $DEST"
+    exit 1
+  fi
+
+  echo "⚠️  Are you sure you want to continue with the live backup?"
+  read -p "Type 'yes' to proceed: " confirm
+  if [[ "$confirm" != "yes" ]]; then
+    echo "❌ Backup cancelled."
     exit 1
   fi
 fi
@@ -68,7 +73,6 @@ fi
 
 sudo caffeinate -i rsync $FLAGS --progress --stats \
   \
-  # Exclude temporary or system-specific files
   --exclude='~$*' \
   --exclude='.DS_Store' \
   --exclude='._*' \
@@ -85,7 +89,6 @@ sudo caffeinate -i rsync $FLAGS --progress --stats \
   --exclude='*/com~apple~CloudDocs/.Trash' \
   --exclude='*/com~apple~CloudDocs/.Trash-*' \
   \
-  # Exclude specific folders by path
   --exclude='*/Desktop/Waco/*' \
   --exclude='*/bmw i8/*' \
   --exclude='*/Spiff photos/*' \
@@ -96,22 +99,21 @@ sudo caffeinate -i rsync $FLAGS --progress --stats \
   --exclude='*/Desktop/Mark/VB House/*' \
   --exclude='*/Desktop/Mark/Waco/*' \
   \
-  # Exclude files/folders by name content
   --exclude='*Tenure*' \
   --exclude='*Vitae*' \
   --exclude='*Payroll*' \
   --exclude='*LoR*' \
   \
   "$SOURCE" "$DEST" \
-  --log-file=~/icloud_rsync.log
-
+  --log-file="$LOGFILE"
 
 # -----------------------------------------
-# End
+# Wrap-up message
 # -----------------------------------------
 if [ "$DRYRUN" = true ]; then
-  echo "🧪 Dry run complete. Check ~/icloud_rsync.log for the full simulation."
+  echo "✅ Dry run complete. Log saved to: $LOGFILE"
 else
-  echo "✅ Backup complete. Log saved to ~/icloud_rsync.log"
+  echo "✅ Backup complete. Log saved to: $LOGFILE"
 fi
 
+echo "📅 Finished at: $(date)"
